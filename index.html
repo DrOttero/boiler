@@ -38,6 +38,18 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   text-shadow:0 2px 3px rgba(18,6,2,.75),0 0 18px rgba(18,6,2,.5);outline:none}
 .nogl .yes{background:linear-gradient(180deg,#8a4a28,#4a2412);box-shadow:0 20px 40px rgba(0,0,0,.5)}
 .yes:focus-visible{box-shadow:0 0 0 3px #f0c48c}
+.drum{position:relative;width:min(70vw,260px);height:230px;perspective:900px;margin-top:4px;
+  -webkit-mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent);
+  touch-action:none;cursor:grab}
+.drum:active{cursor:grabbing}
+.ring{position:absolute;inset:0;transform-style:preserve-3d}
+.item{position:absolute;left:0;right:0;top:50%;height:46px;margin-top:-23px;display:flex;align-items:center;justify-content:center;gap:.35em;
+  font-size:2.3rem;font-weight:300;color:#f2cc98;backface-visibility:hidden;text-shadow:0 2px 8px rgba(10,3,1,.9);font-variant-numeric:tabular-nums}
+.item small{font-size:1rem;color:#d9ad7c;font-weight:500}
+.item.on{color:#fff6e6;font-weight:500}
+.sel{position:absolute;left:14%;right:14%;top:50%;height:50px;margin-top:-25px;pointer-events:none;
+  border-top:1px solid rgba(240,196,140,.55);border-bottom:1px solid rgba(240,196,140,.55);
+  background:linear-gradient(90deg,transparent,rgba(240,196,140,.07),transparent)}
 .hint{font-size:.95rem;color:#d9ad7c;opacity:.75;letter-spacing:.06em;margin-top:-14px;text-shadow:0 1px 6px rgba(10,3,1,.9);transition:opacity .4s}
 .holding .hint{opacity:0}
 #fog{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;display:none}
@@ -83,6 +95,15 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <h1>את בטוחה?</h1>
   <div class="rule"></div>
   <p>הפעם זה ידליק את הדוד באמת!</p>
+  <button class="yes" data-next="s3">כן</button>
+  <div class="hint">לחצי והחזיקי</div>
+</div></section>
+
+<section class="screen" id="s3"><div class="content">
+  <div class="kicker">עוד רגע</div>
+  <h1>לכמה זמן?</h1>
+  <div class="rule"></div>
+  <div class="drum" id="drum"><div class="ring" id="ring"></div><div class="sel"></div></div>
   <button class="yes" data-next="done">כן</button>
   <div class="hint">לחצי והחזיקי</div>
 </div></section>
@@ -92,7 +113,7 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <h1>הדוד דולק!</h1>
   <div class="rule"></div>
   <div class="tlabel">דולק עוד</div>
-  <div id="timer">1:30:00</div>
+  <div id="timer">—</div>
   <p id="real"></p>
 </div></section>
 
@@ -116,8 +137,31 @@ function show(id){
   clearInterval(runT);runner.style.display='none';
   if(id==='s1')run(.7,900,false);
   if(id==='s2')run(.16,180,true);
+  if(id==='s3')run(.5,650,false);
   FX&&FX.onScreen(id);
 }
+/* the drum: pick how long, in 10-minute steps */
+const MINS=[];for(let m=10;m<=150;m+=10)MINS.push(m);
+const drum=$('#drum'),ring=$('#ring'),STEP=18,RAD=23/Math.tan(STEP/2*Math.PI/180);
+let dpos=8, dvel=0, ddrag=null, ditems=[];
+MINS.forEach((m,i)=>{const d=document.createElement('div');d.className='item';
+  d.innerHTML=m%60?`${m}<small>דק׳</small>`:(m===60?'שעה':m===120?'שעתיים':`${m/60}<small>שעות</small>`);ring.appendChild(d);ditems.push(d);});
+function drumRender(){const n=MINS.length;ditems.forEach((d,i)=>{const a=(i-dpos)*STEP;
+  if(Math.abs(a)>80){d.style.display='none';return;}d.style.display='flex';
+  d.style.transform=`rotateX(${-a}deg) translateZ(${RAD}px)`;d.style.opacity=Math.pow(Math.cos(a*Math.PI/180),1.6).toFixed(3);
+  d.classList.toggle('on',Math.abs(a)<STEP/2);});}
+function chosenMinutes(){return MINS[Math.max(0,Math.min(MINS.length-1,Math.round(dpos)))];}
+drum.addEventListener('pointerdown',e=>{ddrag={y:e.clientY,t:performance.now()};dvel=0;drum.setPointerCapture(e.pointerId);e.stopPropagation();});
+drum.addEventListener('pointermove',e=>{if(!ddrag)return;const dy=e.clientY-ddrag.y,dt=Math.max(1,performance.now()-ddrag.t);
+  dpos-=dy/46;dvel=Math.max(-14,Math.min(14,-(dy/46)/dt*1000));ddrag={y:e.clientY,t:performance.now()};e.stopPropagation();});
+const drumUp=()=>{ddrag=null;};drum.addEventListener('pointerup',drumUp);drum.addEventListener('pointercancel',drumUp);
+drum.addEventListener('wheel',e=>{dpos+=Math.sign(e.deltaY)*.5;dvel=0;e.preventDefault();},{passive:false});
+function drumTick(dt){const n=MINS.length-1;
+  if(!ddrag){dpos+=dvel*dt;dvel*=Math.pow(.08,dt);
+   if(Math.abs(dvel)<.6){const tgt=Math.round(Math.max(0,Math.min(n,dpos)));dpos+=(tgt-dpos)*Math.min(1,dt*9);dvel=0;}}
+  if(dpos<0)dpos+=(0-dpos)*Math.min(1,dt*12);if(dpos>n)dpos+=(n-dpos)*Math.min(1,dt*12);
+  drumRender();}
+drumRender();
 let endAt=0,timerT=null;
 function startTimer(min){endAt=Date.now()+min*60000;clearInterval(timerT);
   const el=$('#timer'),tick=()=>{const s=Math.max(0,Math.round((endAt-Date.now())/1000));
@@ -125,10 +169,10 @@ function startTimer(min){endAt=Date.now()+min*60000;clearInterval(timerT);
    el.textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');
    if(!s){clearInterval(timerT);$('.tlabel').textContent='המים חמים 🔥';}};
   tick();timerT=setInterval(tick,1000);}
-function fireBoiler(){
+function fireBoiler(min){
   const h=new URLSearchParams(location.hash.slice(1)),u=h.get('u'),k=h.get('k');
   if(!u||!k)return;
-  fetch('https://'+u.replace(/^https?:\/\//,'').replace(/\/$/,'')+'/on',{method:'POST',body:k})
+  fetch('https://'+u.replace(/^https?:\/\//,'').replace(/\/$/,'')+'/on',{method:'POST',body:k+'|'+min})
     .then(r=>r.json()).then(j=>{if(!j.ok)return;const e=$('#real');
       e.textContent='🔥 הדוד דולק עכשיו באמת';e.style.display='block';if(j.minutes)startTimer(j.minutes);}).catch(()=>{});
 }
@@ -136,7 +180,7 @@ function fireBoiler(){
 let hold=null, prog=0;
 function confirmYes(b){
   if(busy)return;busy=true;const next=b.dataset.next;
-  if(next==='done'){startTimer(90);fireBoiler();}
+  if(next==='done'){const m=chosenMinutes();startTimer(m);fireBoiler(m);}
   if(!FX){show(next);busy=false;return;}
   FX.bite(b);
   if(next==='done')setTimeout(()=>FX.steam(()=>show(next),()=>{busy=false;}),380);
@@ -153,8 +197,8 @@ addEventListener('pointerup',release);addEventListener('pointercancel',release);
 let FX=null;
 const canvas=$('#c');
 let R;
-try{R=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(e){R=null;}
-if(!R){document.body.classList.add('nogl');document.body.classList.remove('intro');show('s1');}
+try{R=location.search.includes('nogl')?null:new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(e){R=null;}
+if(!R){document.body.classList.add('nogl');document.body.classList.remove('intro');show('s1');let lt=performance.now();(function f(n){drumTick(Math.min(.05,(n-lt)/1000));lt=n;if(hold&&n-hold.t0>3000){const b=hold.btn;release();confirmYes(b);}requestAnimationFrame(f);})(lt);}
 else{
 const mobile=Math.min(innerWidth,innerHeight)<700;
 let PR=Math.min(devicePixelRatio||1,mobile?1.5:1.75);
@@ -474,6 +518,7 @@ function frame(now){
  else prog=Math.max(0,prog-dt*2);
  L.uMelt.value=prog; R.toneMappingExposure=.8+.3*prog;
  if(hold||prog>0){const b=(hold&&hold.btn)||document.querySelector('.screen.on .yes');if(b)b.style.transform=`scale(${1+.05*prog})`;}
+ if(screen==='s3')drumTick(dt);
  /* button dollop */
  syncPill();
  const br=1+prog*2.2;
