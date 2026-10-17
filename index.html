@@ -38,6 +38,15 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   text-shadow:0 2px 3px rgba(18,6,2,.75),0 0 18px rgba(18,6,2,.5);outline:none}
 .nogl .yes{background:linear-gradient(180deg,#8a4a28,#4a2412);box-shadow:0 20px 40px rgba(0,0,0,.5)}
 .yes:focus-visible{box-shadow:0 0 0 3px #f0c48c}
+.hint{font-size:.95rem;color:#d9ad7c;opacity:.75;letter-spacing:.06em;margin-top:-14px;text-shadow:0 1px 6px rgba(10,3,1,.9);transition:opacity .4s}
+.holding .hint{opacity:0}
+#fog{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;display:none}
+.steamy #done .content{filter:blur(2.2px)}
+#mist{position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:screen;opacity:.16;overflow:hidden}
+#mist i{position:absolute;width:140vmax;height:70vmax;left:-20vmax;bottom:-35vmax;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(255,200,150,.55),rgba(255,200,150,0));filter:blur(30px);animation:mist 23s ease-in-out infinite alternate}
+#mist i:last-child{left:auto;right:-30vmax;bottom:-45vmax;animation-duration:31s;animation-delay:-9s}
+@keyframes mist{to{transform:translate(12vmax,-9vmax) scale(1.12)}}
 
 #runner{position:fixed;z-index:3;pointer-events:none;font-family:inherit;border:0;border-radius:999px;
   transition:top var(--sp) ease,left var(--sp) ease;display:none}
@@ -57,6 +66,8 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
 </head>
 <body class="intro">
 <canvas id="c"></canvas>
+<div id="mist" aria-hidden="true"><i></i><i></i></div>
+<canvas id="fog"></canvas>
 
 <section class="screen on" id="s1"><div class="content">
   <div class="kicker">הזמנה אישית</div>
@@ -64,6 +75,7 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <div class="rule"></div>
   <p>מה לגבי היום?<br>להדליק דוד?</p>
   <button class="yes" data-next="s2">כן</button>
+  <div class="hint">לחצי והחזיקי</div>
 </div></section>
 
 <section class="screen" id="s2"><div class="content">
@@ -72,6 +84,7 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <div class="rule"></div>
   <p>הפעם זה ידליק את הדוד באמת!</p>
   <button class="yes" data-next="done">כן</button>
+  <div class="hint">לחצי והחזיקי</div>
 </div></section>
 
 <section class="screen" id="done"><div class="content">
@@ -119,13 +132,22 @@ function fireBoiler(){
     .then(r=>r.json()).then(j=>{if(!j.ok)return;const e=$('#real');
       e.textContent='🔥 הדוד דולק עכשיו באמת';e.style.display='block';if(j.minutes)startTimer(j.minutes);}).catch(()=>{});
 }
-document.querySelectorAll('.yes').forEach(b=>b.addEventListener('click',()=>{
+/* hold the button: it melts under the finger, then it happens */
+let hold=null, prog=0;
+function confirmYes(b){
   if(busy)return;busy=true;const next=b.dataset.next;
   if(next==='done'){startTimer(90);fireBoiler();}
   if(!FX){show(next);busy=false;return;}
   FX.bite(b);
-  setTimeout(()=>FX.pour(()=>show(next),()=>{busy=false;}),380);
-}));
+  if(next==='done')setTimeout(()=>FX.steam(()=>show(next),()=>{busy=false;}),380);
+  else setTimeout(()=>FX.pour(()=>show(next),()=>{busy=false;}),380);
+}
+document.querySelectorAll('.yes').forEach(b=>{
+  b.addEventListener('pointerdown',e=>{if(busy)return;hold={btn:b,t0:performance.now(),buzz:0};document.body.classList.add('holding');b.setPointerCapture&&b.setPointerCapture(e.pointerId);});
+  b.addEventListener('click',e=>e.preventDefault());
+});
+const release=()=>{hold=null;document.body.classList.remove('holding');};
+addEventListener('pointerup',release);addEventListener('pointercancel',release);
 
 /* ---------------- renderer ---------------- */
 let FX=null;
@@ -137,7 +159,7 @@ else{
 const mobile=Math.min(innerWidth,innerHeight)<700;
 let PR=Math.min(devicePixelRatio||1,mobile?1.5:1.75);
 R.setPixelRatio(PR);R.setSize(innerWidth,innerHeight,false);
-R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.0;R.autoClear=false;
+R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=.8;R.autoClear=false;
 
 /* studio environment: dark warm room + softboxes -> crisp, believable highlights */
 const pm=new THREE.PMREMGenerator(R);
@@ -173,7 +195,7 @@ const gMat=new THREE.ShaderMaterial({uniforms:{tPrev:{value:null},uA:{value:new 
   gl_FragColor=vec4(v,0.,0.,1.);}`});
 const gScene=new THREE.Scene(),gCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);gScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),gMat));
 R.setRenderTarget(gA);R.setClearColor(0x000000,1);R.clear();R.setRenderTarget(gB);R.clear();R.setRenderTarget(null);
-const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:gA.texture}};
+const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:gA.texture},uGlow:{value:1}};
 const HF=`
 float H(vec2 p,float ce){
  vec2 q=p*.35;
@@ -193,9 +215,9 @@ float GP(vec2 p){
  // rim of pushed-up spread, then a sloped wall down to a deep floor
  return .15*smoothstep(.0,.22,c)-.48*smoothstep(.3,.8,c);}
 float HG(vec2 p,float ce){return H(p,ce)+GP(p);}`;
-const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#5c331d'),roughness:.44,clearcoat:.32,clearcoatRoughness:.26,sheen:.35,sheenColor:new THREE.Color('#9a6a4c'),sheenRoughness:.55,envMapIntensity:.85});
+const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#5c331d'),roughness:.44,clearcoat:.32,clearcoatRoughness:.26,sheen:.35,sheenColor:new THREE.Color('#9a6a4c'),sheenRoughness:.55,envMapIntensity:.4});
 lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
- const head=`uniform float uT;uniform vec2 uPtr;uniform float uK;varying vec2 vP;${NOISE}${HF}`;
+ const head=`uniform float uT;uniform vec2 uPtr;uniform float uK;uniform float uGlow;varying vec2 vP;${NOISE}${HF}`;
  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <beginnormal_vertex>','vec3 objectNormal=vec3(0.,0.,1.);')
   .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,HG(vP,.03));');
@@ -206,13 +228,17 @@ lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
   float dy=(H(vP+vec2(0.,e),.006)-H(vP-vec2(0.,e),.006))/(2.*e)+(GP(vP+vec2(0.,E))-GP(vP-vec2(0.,E)))/(2.*E);
   vec3 no=normalize(vec3(-dx,-dy,1.));
   normal=normalize((viewMatrix*vec4(no,0.)).xyz);}`)
+  .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+ { float gc=GR(vP); float fl=.75+.25*(sin(uT*7.3)*.5+sin(uT*13.1+1.)*.3+sin(uT*3.7+2.)*.2);
+   float near=exp(-dot(vP-uPtr,vP-uPtr)*.9);
+   totalEmissiveRadiance+=vec3(1.,.5,.18)*smoothstep(.3,.95,gc)*(.35+.65*near)*fl*.55*uGlow; }`)
   .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n clearcoatNormal=normal;');
 };
 const lake=new THREE.Mesh(new THREE.PlaneGeometry(26,26,mobile?220:300,mobile?220:300),lakeMat);bg.add(lake);
-const key=new THREE.DirectionalLight(0xffe2c8,2.6);key.position.set(-3,3,5);bg.add(key);
-bg.add(new THREE.HemisphereLight(0x8a5a40,0x1a0904,.6));
-const rimL=new THREE.DirectionalLight(0xff9a60,.5);rimL.position.set(4,6,1.5);bg.add(rimL);
-const touchL=new THREE.PointLight(0xffc89a,0,4,1.6);bg.add(touchL);
+const key=new THREE.DirectionalLight(0xffdcb8,.95);key.position.set(-3,3,5);bg.add(key);
+const hemi=new THREE.HemisphereLight(0x8a5a40,0x1a0904,.22);bg.add(hemi);
+const rimL=new THREE.DirectionalLight(0xff9a60,.22);rimL.position.set(4,6,1.5);bg.add(rimL);
+const touchL=new THREE.PointLight(0xffb278,0,5.5,1.5);bg.add(touchL);
 
 /* gold lid for the opening shot */
 const gold=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#d8a748'),metalness:1,roughness:.2,clearcoat:.4,clearcoatRoughness:.2,envMapIntensity:2.2});
@@ -265,13 +291,13 @@ const CH=chocMat({amp:.05,sc:.012,rough:.3}), CHpour=chocMat({amp:.16,sc:.0055,f
 /* ======= the spread layer: button dollop + lip + drips + splats as ONE fluid surface ======= */
 const L={uPill:{value:new THREE.Vector4(-999,-999,1,1)},uBeat:{value:1},uBite:{value:[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()]},uBiteOn:{value:0},
  uSt:{value:new THREE.Vector4(0,0,0,0)},uSb:{value:0},uGlob:{value:new THREE.Vector4(0,0,0,0)},
- uSp:{value:[0,1,2].map(()=>new THREE.Vector4())},uDr:{value:[0,1,2].map(()=>new THREE.Vector4())},uT:T};
-const layerMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#6b3b20'),roughness:.4,clearcoat:.55,clearcoatRoughness:.16,envMapIntensity:1,sheen:.3,sheenColor:new THREE.Color('#8a5a3c'),sheenRoughness:.5,transparent:true,depthWrite:false});
+ uSp:{value:[0,1,2].map(()=>new THREE.Vector4())},uDr:{value:[0,1,2].map(()=>new THREE.Vector4())},uT:T,uMelt:{value:0}};
+const layerMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#6b3b20'),roughness:.4,clearcoat:.55,clearcoatRoughness:.16,envMapIntensity:.6,sheen:.3,sheenColor:new THREE.Color('#8a5a3c'),sheenRoughness:.5,transparent:true,depthWrite:false});
 layerMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,L);
  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWp;')
   .replace('#include <project_vertex>','#include <project_vertex>\nvWp=(modelMatrix*vec4(transformed,1.)).xyz;');
  sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
-varying vec3 vWp;uniform float uT;uniform vec4 uPill;uniform float uBeat;uniform vec3 uBite[3];uniform float uBiteOn;
+varying vec3 vWp;uniform float uT,uMelt;uniform vec4 uPill;uniform float uBeat;uniform vec3 uBite[3];uniform float uBiteOn;
 uniform vec4 uSt;uniform float uSb;uniform vec4 uGlob;uniform vec4 uSp[3];uniform vec4 uDr[3];
 ${NOISE}
 float smin(float a,float b,float k){float h=clamp(.5+.5*(b-a)/k,0.,1.);return mix(b,a,h)-k*h*(1.-h);}
@@ -283,7 +309,7 @@ vec4 PARTS(vec2 p){ // x: pill(with bites)  y: splats  z: drips/lip  w: dome hei
  float d=p.y-(11.+4.*sin(x*.021)+3.*sin(x*.053+1.)+2.*sin(x*.11+2.));
  if(uSt.y>.5){d=smin(d,taper(p,vec2(uSt.x,4.),uSt.y,uSt.z,uSt.w),9.);d=smin(d,length(p-vec2(uSt.x,4.+uSt.y))-uSb,6.);}
  d=smin(d,sdE(p,uGlob),7.);
- vec2 c=uPill.xy; float hw=uPill.z*uBeat, hh=uPill.w*uBeat;
+ vec2 c=uPill.xy; float hw=uPill.z*uBeat*(1.+.05*uMelt), hh=uPill.w*uBeat*(1.-.1*uMelt);
  vec2 q=p-c; q.x=max(abs(q.x)-(hw-hh),0.); float r=length(q); float dp=r-hh;
  float dome=sqrt(max(0.,hh*hh-r*r));
  float ds=1e5;
@@ -296,7 +322,7 @@ vec4 PARTS(vec2 p){ // x: pill(with bites)  y: splats  z: drips/lip  w: dome hei
  return vec4(dp,ds,d,dome);}
 float SD(vec2 p){vec4 P=PARTS(p);return min(smin(P.x,P.y,6.),P.z);}
 float HT(vec2 p){vec4 P=PARTS(p);
- float hp=P.w*.5*sqrt(clamp(-P.x/7.,0.,1.));
+ float hp=P.w*(.5-.22*uMelt)*sqrt(clamp(-P.x/7.,0.,1.));
  float hs=sqrt(max(0.,-P.y))*1.2, hd=sqrt(max(0.,-P.z))*1.15;
  float cream=(1.3*sin(p.x*.032+1.6*sin(p.y*.05+uT*.2))*sin(p.y*.045+.9*sin(p.x*.02))+.5*sin(p.x*.09-p.y*.05))*smoothstep(0.,14.,-P.x);
  return max(hp+cream+hs*.9,hd);}`)
@@ -304,6 +330,8 @@ float HT(vec2 p){vec4 P=PARTS(p);
  vec2 pp=vec2(vWp.x,-vWp.y); float dd=SD(pp); float al=clamp(.5-dd,0.,1.); if(al<.01)discard; diffuseColor.a*=al;
  diffuseColor.rgb*=mix(.72,1.,smoothstep(0.,7.,-dd));
  #include <alphatest_fragment>`)
+  .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+ { vec4 P0=PARTS(pp); totalEmissiveRadiance+=vec3(1.,.42,.14)*uMelt*uMelt*.5*smoothstep(0.,16.,-P0.x); }`)
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
  { float e=1.; float hx=HT(pp+vec2(e,0.))-HT(pp-vec2(e,0.)), hy=HT(pp+vec2(0.,e))-HT(pp-vec2(0.,e));
    normal=normalize(vec3(-hx/(2.*e)*1.7, hy/(2.*e)*1.7, 1.)); }`)
@@ -343,6 +371,20 @@ function buildPour(){
  pourMesh.position.set(0,400,200);pourMesh.visible=false;fx.add(pourMesh);
 }
 
+/* ---------- steam on the glass (ending) ---------- */
+const fogC=$('#fog'), fogX=fogC.getContext('2d');
+let fogOn=false, fogRise=0, fogWiped=false, lastWipe=null;
+const fogTex=document.createElement('canvas');fogTex.width=fogTex.height=256;
+{const g=document.createElement('canvas');g.width=g.height=16;const gx=g.getContext('2d'),im=gx.createImageData(16,16);
+ for(let i=0;i<256;i++){const v=150+Math.random()*105;im.data[i*4]=im.data[i*4+1]=im.data[i*4+2]=v;im.data[i*4+3]=255;}
+ gx.putImageData(im,0,0);const fx2=fogTex.getContext('2d');fx2.imageSmoothingEnabled=true;fx2.drawImage(g,0,0,256,256);}
+const drops=[];
+function fogSize(){fogC.width=W;fogC.height=Hh;}
+function fogBase(alpha){fogX.globalCompositeOperation='source-over';fogX.globalAlpha=alpha;fogX.fillStyle='#e9e2db';fogX.fillRect(0,0,W,Hh);
+ fogX.globalAlpha=alpha*.55;fogX.drawImage(fogTex,0,0,W,Hh);fogX.globalAlpha=1;}
+function fogErase(x,y,r,a){fogX.globalCompositeOperation='destination-out';const g=fogX.createRadialGradient(x,y,0,x,y,r);
+ g.addColorStop(0,`rgba(0,0,0,${a})`);g.addColorStop(.7,`rgba(0,0,0,${a*.6})`);g.addColorStop(1,'rgba(0,0,0,0)');fogX.fillStyle=g;fogX.beginPath();fogX.arc(x,y,r,0,6.2832);fogX.fill();fogX.globalCompositeOperation='source-over';}
+
 /* ---------- crumbs ---------- */
 const crumbs=[], crumbGeo=new THREE.IcosahedronGeometry(1,1);
 function spawnCrumbs(x,y){for(let i=0;i<14;i++){const m=new THREE.Mesh(crumbGeo,CH);const s=2+Math.random()*3.5;m.scale.set(s,s*.8,s);
@@ -354,7 +396,7 @@ function resize(){
  W=innerWidth;Hh=innerHeight;R.setSize(W,Hh,false);
  cam.aspect=W/Hh;cam.fov=cam.aspect<1?52:35;cam.updateProjectionMatrix();
  ocam.right=W;ocam.bottom=-Hh;ocam.updateProjectionMatrix();
- buildPour();layer.scale.set(W,Hh,1);layer.position.set(W/2,-Hh/2,50);
+ buildPour();layer.scale.set(W,Hh,1);layer.position.set(W/2,-Hh/2,50);fogSize();
 }
 resize();addEventListener('resize',resize);
 
@@ -367,6 +409,13 @@ addEventListener('pointerup',e=>{ptr.down=0;if(e.pointerType!=='mouse')ptr.seen=
 
 /* ---------- FX API ---------- */
 FX={
+ steam(mid,done){
+  document.body.classList.add('pouring');fogC.style.display='block';fogOn=true;fogRise=0;fogWiped=false;drops.length=0;
+  for(let i=0;i<9;i++)drops.push({x:Math.random()*W,y:Math.random()*Hh*.6,v:0,r:3+Math.random()*4,wait:Math.random()*4});
+  const t0=performance.now(),d1=1500;
+  (function step(now){const e=Math.min(1,(now-t0)/d1);fogRise=1-Math.pow(1-e,3);
+   if(e<1)requestAnimationFrame(step);else{mid();document.body.classList.remove('pouring');document.body.classList.add('steamy');done&&done();}})(t0);
+ },
  onScreen(){D=null;splats.length=0;L.uBiteOn.value=0;nextAt=performance.now()+2600;},
  bite(btn){syncPill();setBites(true);D=null;splats.length=0;const q=btn.getBoundingClientRect();spawnCrumbs(q.right-24,q.top+14);},
  pour(mid,done){
@@ -391,6 +440,9 @@ const eo=x=>1-(1-x)*(1-x), eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
 function frame(now){
  if(!t0){t0=now;last=now;setTimeout(()=>document.body.classList.remove('intro'),INTRO-500);}
  const rdt=Math.min(.3,(now-last)/1000), dt=Math.min(.05,rdt);last=now;const t=(now-t0)/1000;T.value=t%3000;
+ /* candle flicker */
+ const fl=1+.06*Math.sin(t*7.3)+.035*Math.sin(t*13.1+1)+.03*Math.sin(t*3.7+2);
+ key.intensity=.95*fl;hemi.intensity=.22*fl;
  /* adaptive resolution */
  frames++; if(frames>30&&frames<400){slow=slow*.95+(dt>.034?1:0)*.05; if(slow>.6&&PR>.8){PR=Math.max(.75,PR-.25);R.setPixelRatio(PR);R.setSize(W,Hh,false);slow=0;}}
  /* intro */
@@ -415,10 +467,17 @@ function frame(now){
   else{gMat.uniforms.uDraw.value=0;lastG=null;}
   R.setRenderTarget(gB);R.render(gScene,gCam);R.setRenderTarget(null);
   const tmp=gA;gA=gB;gB=tmp;U.uGroove.value=gA.texture;}
- touchL.position.set(px-.4,py-.6,.9);touchL.intensity=idle?0:2.5+kk*2;
+ touchL.position.set(px-.3,py-.5,.85);touchL.intensity=(idle?.0:6+kk*5)*fl;
+ /* hold-to-yes: progress, melt, heartbeat, warmth */
+ if(hold){prog=Math.min(1,(now-hold.t0)/3000); if(navigator.vibrate&&now-hold.buzz>260){hold.buzz=now;navigator.vibrate(6);}
+  if(prog>=1){const b=hold.btn;release();prog=1;confirmYes(b);}}
+ else prog=Math.max(0,prog-dt*2);
+ L.uMelt.value=prog; R.toneMappingExposure=.8+.3*prog;
+ if(hold||prog>0){const b=(hold&&hold.btn)||document.querySelector('.screen.on .yes');if(b)b.style.transform=`scale(${1+.05*prog})`;}
  /* button dollop */
  syncPill();
- L.uBeat.value=1+.03*Math.max(0,Math.sin(t*5.2))*Math.max(0,Math.sin(t*2.6));
+ const br=1+prog*2.2;
+ L.uBeat.value=1+(.03+.025*prog)*Math.max(0,Math.sin(t*5.2*br))*Math.max(0,Math.sin(t*2.6*br));
  /* drips -> fall -> splat on the button */
  const pouring=document.body.classList.contains('pouring');
  L.uSt.value.set(0,0,0,0);L.uSb.value=0;L.uGlob.value.set(0,0,0,0);
@@ -446,10 +505,29 @@ function frame(now){
  }
  for(let i=crumbs.length-1;i>=0;i--){const c=crumbs[i];c.t+=dt;c.vy-=900*dt;c.m.position.x+=c.vx*dt;c.m.position.y+=c.vy*dt;c.m.rotation.x+=c.vr*dt;c.m.rotation.y+=c.vr*dt*.7;
   if(c.t>1.4){fx.remove(c.m);crumbs.splice(i,1);}}
+ /* steam: rising fog, slow re-condensing, running drops, finger wipes */
+ if(fogOn){
+  if(fogRise<1){fogX.clearRect(0,0,W,Hh);fogBase(.88);const ry=Hh*(1-fogRise)-10;fogX.globalCompositeOperation='destination-out';
+   const g=fogX.createLinearGradient(0,Math.max(0,ry-160),0,ry);g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');fogX.fillStyle=g;fogX.fillRect(0,0,W,Math.max(0,ry));fogX.globalCompositeOperation='source-over';}
+  else{
+   fogBase(.012);
+   if(!idle&&(ptr.down||ptr.mouse)){const x=ptr.x,y=ptr.y;
+    if(lastWipe){const dx=x-lastWipe[0],dy=y-lastWipe[1],Lw=Math.hypot(dx,dy),n=Math.max(1,Math.ceil(Lw/6));
+     for(let i=1;i<=n;i++)fogErase(lastWipe[0]+dx*i/n,lastWipe[1]+dy*i/n,30,.9);}
+    else fogErase(x,y,30,.9);
+    lastWipe=[x,y]; if(!fogWiped){fogWiped=true;document.body.classList.remove('steamy');}}
+   else lastWipe=null;
+   for(const d of drops){if(d.wait>0){d.wait-=dt;continue;}d.v=Math.min(260,d.v+180*dt);const ny=d.y+d.v*dt;
+    fogErase(d.x,ny,d.r*1.6,.55);d.y=ny;d.x+=Math.sin(ny*.05)*.4;
+    fogX.globalCompositeOperation='source-over';fogX.fillStyle='rgba(255,255,255,.35)';fogX.beginPath();fogX.ellipse(d.x,d.y,d.r*.7,d.r,0,0,6.2832);fogX.fill();
+    if(d.y>Hh+10){d.y=-10;d.x=Math.random()*W;d.v=0;d.wait=2+Math.random()*7;}}
+  }
+ }
  /* render */
  R.clear();R.render(bg,cam);if(it>.86){R.clearDepth();R.render(fx,ocam);}
  requestAnimationFrame(frame);
 }
+if(location.search.includes('dbg'))window.__FX={FX,show,startTimer};
 show('s1');
 try{R.compile(bg,cam);R.compile(fx,ocam);}catch(e){}
 requestAnimationFrame(frame);
