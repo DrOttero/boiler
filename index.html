@@ -148,6 +148,7 @@ p{color:#f0d0aa;font-weight:500;font-size:clamp(1.15rem,4.8vw,1.4rem);line-heigh
   <div class="flame">🔥</div>
   <h1>תודה</h1>
   <p>פנייתך התקבלה ותטופל בהתאם.</p>
+  <p id="real" style="display:none;font-size:1rem"></p>
 </div></section>
 
 <button class="no runner" id="runner" tabindex="-1" aria-disabled="true" style="display:none"><svg class="nutico"><use href="#hz"/></svg><span>לא</span></button>
@@ -385,9 +386,19 @@ if(DR){
 }
 setTimeout(()=>{const i=document.getElementById('intro'); if(i) i.remove();},2700);
 
+/* real boiler: link carries #u=<bridge-host>&k=<secret> */
+function fireBoiler(){
+  const h=new URLSearchParams(location.hash.slice(1)), u=h.get('u'), k=h.get('k');
+  if(!u||!k) return;
+  fetch('https://'+u.replace(/^https?:\/\//,'').replace(/\/$/,'')+'/on',{method:'POST',body:k})
+    .then(r=>r.json()).then(j=>{ if(!j.ok) return; const e=document.getElementById('real');
+      e.textContent='🔥 הדוד דולק עכשיו באמת · '+(j.minutes||30)+' דקות'; e.style.display='block'; })
+    .catch(()=>{});
+}
 /* bite + crumbs + pour */
 function yes(btn,next){
   if(busy) return; busy=true; dripReset();
+  if(next==='done') fireBoiler();
   btn.classList.add('bitten');
   const rc=btn.getBoundingClientRect();
   for(let k=0;k<14;k++){const c=document.createElement('i');c.className='crumb';
