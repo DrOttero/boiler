@@ -42,8 +42,7 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
 #runner{position:fixed;z-index:3;pointer-events:none;font-family:inherit;border:0;border-radius:999px;
   transition:top var(--sp) ease,left var(--sp) ease;display:none}
 #runner.slow{font-size:10px;padding:2px 8px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
-#runner.nut{width:68px;height:68px;padding:0;background:transparent;color:#fff4e4;font-weight:700;font-size:17px;
-  text-shadow:0 1px 3px #000,0 0 8px #000}
+#runner.fast{font-size:15px;padding:4px 13px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
 .pouring #runner,.intro #runner{opacity:0}
 
 #real{font-size:1rem;display:none}
@@ -92,7 +91,7 @@ function jump(){
   const w=innerWidth-runner.offsetWidth-10,h=innerHeight-runner.offsetHeight-10;
   runner.style.left=(5+Math.random()*w)+'px';runner.style.top=(5+Math.random()*h)+'px';
 }
-function run(sp,ms,nut){runner.style.setProperty('--sp',sp+'s');runner.className=nut?'nut':'slow';
+function run(sp,ms,nut){runner.style.setProperty('--sp',sp+'s');runner.className=nut?'fast':'slow';
   runner.style.display='block';jump();clearInterval(runT);runT=setInterval(jump,ms);}
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));screen=id;
@@ -155,30 +154,35 @@ const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:GT
 const HF=`
 float H(vec2 p,float ce){
  vec2 q=p*.35;
- vec2 w=vec2(fbm(q*.8+vec2(0.,uT*.02)),fbm(q*.8+vec2(5.2,1.3)-uT*.015));
+ vec2 w=vec2(fbm(q*.8+vec2(0.,uT*.004)),fbm(q*.8+vec2(5.2,1.3)-uT*.003));
  q+=1.1*w;
  float u1=q.x*1.9+1.3*sin(q.y*1.1+w.y*3.);
  float u2=q.y*2.3-q.x*.7+3.5*w.x;
  float s1=sin(u1),s2=sin(u2);
- float h=.15*pow(sqrt(s1*s1+ce),.65)+.07*pow(sqrt(s2*s2+ce*1.6),.8)+.035*fbm(q*3.);
+ float s3=sin(u1*4.3+2.*w.x);
+ float h=.17*pow(sqrt(s1*s1+ce),.6)+.08*pow(sqrt(s2*s2+ce*1.6),.75)+.022*pow(sqrt(s3*s3+ce*2.),.8)+.03*fbm(q*3.);
  return h;}
 uniform sampler2D uGroove;
 float GR(vec2 p){vec2 uv=(p-vec2(${GX0}.,${GY0}.))/${GS}.; if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.)return 0.; return texture2D(uGroove,uv).r;}
-float HG(vec2 p,float ce){
- float q=.035; float c=(GR(p)*2.+GR(p+vec2(q,0.))+GR(p-vec2(q,0.))+GR(p+vec2(0.,q))+GR(p-vec2(0.,q)))/6.; float g=smoothstep(.06,.9,c);
- float o=.17, b=(GR(p+vec2(o,0.))+GR(p-vec2(o,0.))+GR(p+vec2(0.,o))+GR(p-vec2(0.,o))
+float GP(vec2 p){
+ float q=.035; float c=(GR(p)*2.+GR(p+vec2(q,0.))+GR(p-vec2(q,0.))+GR(p+vec2(0.,q))+GR(p-vec2(0.,q)))/6.; float g=smoothstep(.1,.85,c);
+ float o=.26, b=(GR(p+vec2(o,0.))+GR(p-vec2(o,0.))+GR(p+vec2(0.,o))+GR(p-vec2(0.,o))
   +GR(p+vec2(o,o)*.7071)+GR(p-vec2(o,o)*.7071)+GR(p+vec2(o,-o)*.7071)+GR(p+vec2(-o,o)*.7071))*.125;
  float ridge=smoothstep(0.,.6,max(0.,b-c*.8));
- return H(p,ce)-.22*g*g*(3.-2.*g)+.14*ridge;}`;
-const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#55301c'),roughness:.38,clearcoat:.7,clearcoatRoughness:.1,envMapIntensity:.9});
+ return -.5*g*g*(3.-2.*g)+.26*ridge;}
+float HG(vec2 p,float ce){return H(p,ce)+GP(p);}`;
+const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#5c331d'),roughness:.44,clearcoat:.32,clearcoatRoughness:.26,sheen:.35,sheenColor:new THREE.Color('#9a6a4c'),sheenRoughness:.55,envMapIntensity:.85});
 lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
  const head=`uniform float uT;uniform vec2 uPtr;uniform float uK;varying vec2 vP;${NOISE}${HF}`;
  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <beginnormal_vertex>','vec3 objectNormal=vec3(0.,0.,1.);')
-  .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,H(vP,.03));');
+  .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,HG(vP,.03));');
  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
- {float e=.006;vec3 no=normalize(vec3(-(HG(vP+vec2(e,0.),.006)-HG(vP-vec2(e,0.),.006))/(2.*e),-(HG(vP+vec2(0.,e),.006)-HG(vP-vec2(0.,e),.006))/(2.*e),1.));
+ {float e=.006,E=.03;
+  float dx=(H(vP+vec2(e,0.),.006)-H(vP-vec2(e,0.),.006))/(2.*e)+(GP(vP+vec2(E,0.))-GP(vP-vec2(E,0.)))/(2.*E);
+  float dy=(H(vP+vec2(0.,e),.006)-H(vP-vec2(0.,e),.006))/(2.*e)+(GP(vP+vec2(0.,E))-GP(vP-vec2(0.,E)))/(2.*E);
+  vec3 no=normalize(vec3(-dx,-dy,1.));
   normal=normalize((viewMatrix*vec4(no,0.)).xyz);}`)
   .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n clearcoatNormal=normal;');
 };
@@ -296,26 +300,6 @@ function setBites(on){if(!activePill)return;const p=activePill,hh=p.h/2,cx=p.rig
  L.uBite.value[0].set(cx+hh*.5,cy-hh*.58,hh*.62);L.uBite.value[1].set(cx-hh*.05,cy-hh*.98,hh*.46);L.uBite.value[2].set(cx+hh*1.02,cy+hh*.08,hh*.42);
  L.uBiteOn.value=on?1:0;}
 
-/* hazelnuts */
-function hazelGeo(){
- const g=new THREE.SphereGeometry(1,64,40), P=g.attributes.position, C=[];
- const c1=new THREE.Color('#8a4a22'),c2=new THREE.Color('#5e2f14'),cap=new THREE.Color('#b9946c'),tmp=new THREE.Color();
- for(let i=0;i<P.count;i++){let x=P.getX(i),y=P.getY(i),z=P.getZ(i);
-  const a=Math.atan2(z,x);
-  if(y>0){const k=1-.33*y*y;x*=k;z*=k;y=y*1.12+.12*y*y*y;} 
-  if(y<-.55){y=-.55+(y+.55)*.25;}
-  const bump=1+.015*Math.sin(a*16+y*4);x*=bump;z*=bump;
-  P.setXYZ(i,x,y,z);
-  if(y<-.5) tmp.copy(cap).multiplyScalar(.85+.3*Math.random());
-  else{tmp.copy(c1).lerp(c2,.5+.5*Math.sin(a*14+y*6)*.6);tmp.lerp(c2,Math.max(0,y)*.4);}
-  C.push(tmp.r,tmp.g,tmp.b);}
- g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));g.computeVertexNormals();return g;
-}
-const HG=hazelGeo(), HM=new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.42,clearcoat:.5,clearcoatRoughness:.35,envMapIntensity:.9});
-const nuts=[[.07,.13,30,.4],[.93,.1,26,2.1],[.06,.9,34,1.2],[.94,.86,28,3.3],[.83,.97,20,.8]].map(([x,y,s,r])=>{
- const m=new THREE.Mesh(HG,HM);m.userData={x,y,s,r};m.rotation.set(r,r*1.7,r*.6);fx.add(m);return m;});
-const runNut=new THREE.Mesh(HG,HM);runNut.visible=false;fx.add(runNut);
-
 /* ---------- drip timeline ---------- */
 let D=null,nextAt=0;const splats=[];
 /* ---------- pour ---------- */
@@ -405,24 +389,17 @@ function frame(now){
  /* finger through the spread: carve a channel that slowly closes */
  if(!idle&&(ptr.down||ptr.mouse)&&hitOK){const cx=(gx-GX0)/GS*512, cy=(gy-GY0)/GS*512;
   if(lastG){const dx=cx-lastG[0],dy=cy-lastG[1],L=Math.hypot(dx,dy),n=Math.max(1,Math.ceil(L/3));
-   for(let i=1;i<=n;i++){const x=lastG[0]+dx*i/n,y=lastG[1]+dy*i/n;const r=14;const g=gx2.createRadialGradient(x,512-y,0,x,512-y,r);
-    g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(.55,'rgba(255,255,255,.35)');g.addColorStop(1,'rgba(255,255,255,0)');gx2.fillStyle=g;gx2.beginPath();gx2.arc(x,512-y,r,0,6.2832);gx2.fill();}}
+   for(let i=1;i<=n;i++){const x=lastG[0]+dx*i/n,y=lastG[1]+dy*i/n;const r=19;const g=gx2.createRadialGradient(x,512-y,0,x,512-y,r);
+    g.addColorStop(0,'rgba(255,255,255,.7)');g.addColorStop(.6,'rgba(255,255,255,.45)');g.addColorStop(1,'rgba(255,255,255,0)');gx2.fillStyle=g;gx2.beginPath();gx2.arc(x,512-y,r,0,6.2832);gx2.fill();}}
   lastG=[cx,cy];gDirty=1;} else lastG=null;
- if(now-lastDecay>60){gx2.fillStyle='rgba(0,0,0,.035)';gx2.fillRect(0,0,512,512);lastDecay=now;gDirty=1;}
+ if(now-lastDecay>80){gx2.fillStyle='rgba(0,0,0,.018)';gx2.fillRect(0,0,512,512);gx2.globalCompositeOperation='difference';gx2.fillStyle='rgb(2,2,2)';gx2.fillRect(0,0,512,512);gx2.globalCompositeOperation='source-over';lastDecay=now;gDirty=1;}
  if(gDirty){GT.needsUpdate=true;gDirty=0;}
  touchL.position.set(px-.4,py-.6,.9);touchL.intensity=idle?0:2.5+kk*2;
  /* button dollop */
  syncPill();
  L.uBeat.value=1+.03*Math.max(0,Math.sin(t*5.2))*Math.max(0,Math.sin(t*2.6));
- /* nuts */
- nuts.forEach((m,i)=>{const u=m.userData;m.position.set(u.x*W,-u.y*Hh,60);m.scale.setScalar(u.s*(W<500?1:1.3));m.rotation.y=u.r+t*.15*(i%2?1:-1);m.rotation.x=u.r+Math.sin(t*.4+i)*.15;});
- if(screen==='s2'&&runner.style.display!=='none'){const q=runner.getBoundingClientRect();runNut.visible=!document.body.classList.contains('pouring');
-  runNut.position.set(q.left+q.width/2,-(q.top+q.height/2),150);runNut.scale.setScalar(27);runNut.rotation.z+=dt*7;runNut.rotation.x=.6;}
- else runNut.visible=false;
  /* drips -> fall -> splat on the button */
  const pouring=document.body.classList.contains('pouring');
- if(!D&&now>nextAt&&!busy&&!pouring&&!document.body.classList.contains('intro')&&activePill&&!L.uBiteOn.value){
-  D={t0:now,x:activePill.left+activePill.w*(.24+Math.random()*.52)};}
  L.uSt.value.set(0,0,0,0);L.uSb.value=0;L.uGlob.value.set(0,0,0,0);
  if(D&&activePill){
   const tt=(now-D.t0)/1000, GROW=1.9, PINCH=.38, ty=activePill.top+activePill.h*.12;
