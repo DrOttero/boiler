@@ -46,6 +46,10 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
 .pouring #runner,.intro #runner{opacity:0}
 
 #real{font-size:1rem;display:none}
+.tlabel{font-size:clamp(1rem,4.2vw,1.2rem);color:#e6c49c;letter-spacing:.04em;text-shadow:0 1px 4px rgba(10,3,1,.9);margin-top:6px}
+#timer{font-weight:300;font-size:clamp(3.2rem,15vw,5rem);line-height:1;font-variant-numeric:tabular-nums;direction:ltr;
+  background:linear-gradient(180deg,#fff6e6 0%,#f2cc98 55%,#c48a52 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 3px 12px rgba(10,3,1,.9))}
 .flame{font-size:4.2rem;filter:drop-shadow(0 0 24px rgba(255,120,40,.85));animation:flick 1s infinite alternate}
 @keyframes flick{to{transform:scale(1.1) rotate(-4deg)}}
 @media (prefers-reduced-motion: reduce){.flame{animation:none}}
@@ -74,6 +78,8 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <div class="flame">🔥</div>
   <h1>הדוד דולק!</h1>
   <div class="rule"></div>
+  <div class="tlabel">דולק עוד</div>
+  <div id="timer">1:30:00</div>
   <p id="real"></p>
 </div></section>
 
@@ -99,16 +105,23 @@ function show(id){
   if(id==='s2')run(.16,180,true);
   FX&&FX.onScreen(id);
 }
+let endAt=0,timerT=null;
+function startTimer(min){endAt=Date.now()+min*60000;clearInterval(timerT);
+  const el=$('#timer'),tick=()=>{const s=Math.max(0,Math.round((endAt-Date.now())/1000));
+   const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+   el.textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');
+   if(!s){clearInterval(timerT);$('.tlabel').textContent='המים חמים 🔥';}};
+  tick();timerT=setInterval(tick,1000);}
 function fireBoiler(){
   const h=new URLSearchParams(location.hash.slice(1)),u=h.get('u'),k=h.get('k');
   if(!u||!k)return;
   fetch('https://'+u.replace(/^https?:\/\//,'').replace(/\/$/,'')+'/on',{method:'POST',body:k})
     .then(r=>r.json()).then(j=>{if(!j.ok)return;const e=$('#real');
-      e.textContent='🔥 הדוד דולק עכשיו באמת · '+(j.minutes||30)+' דקות';e.style.display='block';}).catch(()=>{});
+      e.textContent='🔥 הדוד דולק עכשיו באמת';e.style.display='block';if(j.minutes)startTimer(j.minutes);}).catch(()=>{});
 }
 document.querySelectorAll('.yes').forEach(b=>b.addEventListener('click',()=>{
   if(busy)return;busy=true;const next=b.dataset.next;
-  if(next==='done')fireBoiler();
+  if(next==='done'){startTimer(90);fireBoiler();}
   if(!FX){show(next);busy=false;return;}
   FX.bite(b);
   setTimeout(()=>FX.pour(()=>show(next),()=>{busy=false;}),380);
