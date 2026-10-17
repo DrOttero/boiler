@@ -41,8 +41,8 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
 
 #runner{position:fixed;z-index:3;pointer-events:none;font-family:inherit;border:0;border-radius:999px;
   transition:top var(--sp) ease,left var(--sp) ease;display:none}
-#runner.slow{font-size:10px;padding:2px 8px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
-#runner.fast{font-size:15px;padding:4px 13px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
+#runner.slow{font-size:19px;padding:5px 16px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
+#runner.fast{font-size:24px;padding:7px 20px;background:#fff3e0;color:#7a3a17;box-shadow:0 3px 8px rgba(0,0,0,.45)}
 .pouring #runner,.intro #runner{opacity:0}
 
 #real{font-size:1rem;display:none}
@@ -58,23 +58,22 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
   <div class="kicker">הזמנה אישית</div>
   <h1>שלום ליאת</h1>
   <div class="rule"></div>
-  <p>האם להדליק דוד?<br>לחצי על הכפתור המתאים.</p>
+  <p>מה לגבי היום?<br>להדליק דוד?</p>
   <button class="yes" data-next="s2">כן</button>
 </div></section>
 
 <section class="screen" id="s2"><div class="content">
   <div class="kicker">רגע לפני</div>
-  <h1>תודה על התשובה</h1>
+  <h1>את בטוחה?</h1>
   <div class="rule"></div>
-  <p>את יכולה להתחרט.<br>האם להדליק דוד?</p>
+  <p>הפעם זה ידליק את הדוד באמת!</p>
   <button class="yes" data-next="done">כן</button>
 </div></section>
 
 <section class="screen" id="done"><div class="content">
   <div class="flame">🔥</div>
-  <h1>תודה</h1>
+  <h1>הדוד דולק!</h1>
   <div class="rule"></div>
-  <p>פנייתך התקבלה ותטופל בהתאם.</p>
   <p id="real"></p>
 </div></section>
 
