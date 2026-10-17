@@ -147,10 +147,21 @@ const T={value:0};
 const bg=new THREE.Scene();bg.environment=ENV;bg.background=new THREE.Color(0x1a0904);bg.fog=new THREE.Fog(0x1a0904,8,20);
 const A0=innerWidth/innerHeight;
 const cam=new THREE.PerspectiveCamera(A0<1?52:35,A0,.1,60);
-const GC=document.createElement('canvas');GC.width=GC.height=512;const gx2=GC.getContext('2d');gx2.fillStyle='#000';gx2.fillRect(0,0,512,512);
-const GT=new THREE.CanvasTexture(GC);GT.minFilter=THREE.LinearFilter;GT.magFilter=THREE.LinearFilter;GT.generateMipmaps=false;
-const GX0=-6,GY0=-3,GS=12; // groove map covers this square of the lake (world units)
-const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:GT}};
+/* groove map: a float texture on the GPU. Each frame: everything sinks back a little (constant speed),
+   and the finger stamps a cone along its path (max-blend). */
+const GX0=-6,GY0=-3,GS=12, GN=512;
+const rtOpt={type:THREE.HalfFloatType,format:THREE.RGBAFormat,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false};
+let gA=new THREE.WebGLRenderTarget(GN,GN,rtOpt), gB=new THREE.WebGLRenderTarget(GN,GN,rtOpt);
+const gMat=new THREE.ShaderMaterial({uniforms:{tPrev:{value:null},uA:{value:new THREE.Vector2()},uB:{value:new THREE.Vector2()},uR:{value:.055},uDraw:{value:0},uDec:{value:0}},
+ vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
+ fragmentShader:`uniform sampler2D tPrev;uniform vec2 uA,uB;uniform float uR,uDraw,uDec;varying vec2 vUv;
+ void main(){float v=max(texture2D(tPrev,vUv).r-uDec,0.);
+  if(uDraw>.5){vec2 pa=vUv-uA,ba=uB-uA;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-8),0.,1.);float d=length(pa-ba*h);
+   v=max(v,clamp(1.-d/uR,0.,1.));}
+  gl_FragColor=vec4(v,0.,0.,1.);}`});
+const gScene=new THREE.Scene(),gCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);gScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),gMat));
+R.setRenderTarget(gA);R.setClearColor(0x000000,1);R.clear();R.setRenderTarget(gB);R.clear();R.setRenderTarget(null);
+const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:gA.texture}};
 const HF=`
 float H(vec2 p,float ce){
  vec2 q=p*.35;
@@ -165,11 +176,10 @@ float H(vec2 p,float ce){
 uniform sampler2D uGroove;
 float GR(vec2 p){vec2 uv=(p-vec2(${GX0}.,${GY0}.))/${GS}.; if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.)return 0.; return texture2D(uGroove,uv).r;}
 float GP(vec2 p){
- float q=.035; float c=(GR(p)*2.+GR(p+vec2(q,0.))+GR(p-vec2(q,0.))+GR(p+vec2(0.,q))+GR(p-vec2(0.,q)))/6.; float g=smoothstep(.1,.85,c);
- float o=.26, b=(GR(p+vec2(o,0.))+GR(p-vec2(o,0.))+GR(p+vec2(0.,o))+GR(p-vec2(0.,o))
-  +GR(p+vec2(o,o)*.7071)+GR(p-vec2(o,o)*.7071)+GR(p+vec2(o,-o)*.7071)+GR(p+vec2(-o,o)*.7071))*.125;
- float ridge=smoothstep(0.,.6,max(0.,b-c*.8));
- return -.5*g*g*(3.-2.*g)+.26*ridge;}
+ // c is a cone (1 at the finger path, 0 at the outer rim of displaced spread)
+ float q=.025; float c=(GR(p)*2.+GR(p+vec2(q,0.))+GR(p-vec2(q,0.))+GR(p+vec2(0.,q))+GR(p-vec2(0.,q)))/6.;
+ // rim of pushed-up spread, then a sloped wall down to a deep floor
+ return .15*smoothstep(.0,.22,c)-.48*smoothstep(.3,.8,c);}
 float HG(vec2 p,float ce){return H(p,ce)+GP(p);}`;
 const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#5c331d'),roughness:.44,clearcoat:.32,clearcoatRoughness:.26,sheen:.35,sheenColor:new THREE.Color('#9a6a4c'),sheenRoughness:.55,envMapIntensity:.85});
 lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
@@ -179,7 +189,7 @@ lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
   .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,HG(vP,.03));');
  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
- {float e=.006,E=.03;
+ {float e=.006,E=.04;
   float dx=(H(vP+vec2(e,0.),.006)-H(vP-vec2(e,0.),.006))/(2.*e)+(GP(vP+vec2(E,0.))-GP(vP-vec2(E,0.)))/(2.*E);
   float dy=(H(vP+vec2(0.,e),.006)-H(vP-vec2(0.,e),.006))/(2.*e)+(GP(vP+vec2(0.,E))-GP(vP-vec2(0.,E)))/(2.*E);
   vec3 no=normalize(vec3(-dx,-dy,1.));
@@ -362,13 +372,13 @@ FX={
 };
 
 /* ---------- main loop ---------- */
-let t0=0; let px=0,py=0,kk=0, last=0, slow=0, frames=0, lastG=null, gDirty=0, lastDecay=0, hitOK=false;
+let t0=0; let px=0,py=0,kk=0, last=0, slow=0, frames=0, lastG=null, hitOK=false;
 const INTRO=2600;
 const eo=x=>1-(1-x)*(1-x), eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
 
 function frame(now){
  if(!t0){t0=now;last=now;setTimeout(()=>document.body.classList.remove('intro'),INTRO-500);}
- const dt=Math.min(.05,(now-last)/1000);last=now;const t=(now-t0)/1000;T.value=t%3000;
+ const rdt=Math.min(.3,(now-last)/1000), dt=Math.min(.05,rdt);last=now;const t=(now-t0)/1000;T.value=t%3000;
  /* adaptive resolution */
  frames++; if(frames>30&&frames<400){slow=slow*.95+(dt>.034?1:0)*.05; if(slow>.6&&PR>.8){PR=Math.max(.75,PR-.25);R.setPixelRatio(PR);R.setSize(W,Hh,false);slow=0;}}
  /* intro */
@@ -386,14 +396,13 @@ function frame(now){
  else{ndc.set(ptr.x/W*2-1,-(ptr.y/Hh)*2+1);ray.setFromCamera(ndc,cam);hitOK=!!ray.ray.intersectPlane(plane0,hit);if(hitOK){gx=hit.x;gy=hit.y;}else{gx=px;gy=py;}}
  px+=(gx-px)*.08;py+=(gy-py)*.08;kk+=(ptr.down-kk)*.1;
  U.uPtr.value.set(px,py);U.uK.value=kk;
- /* finger through the spread: carve a channel that slowly closes */
- if(!idle&&(ptr.down||ptr.mouse)&&hitOK){const cx=(gx-GX0)/GS*512, cy=(gy-GY0)/GS*512;
-  if(lastG){const dx=cx-lastG[0],dy=cy-lastG[1],L=Math.hypot(dx,dy),n=Math.max(1,Math.ceil(L/3));
-   for(let i=1;i<=n;i++){const x=lastG[0]+dx*i/n,y=lastG[1]+dy*i/n;const r=19;const g=gx2.createRadialGradient(x,512-y,0,x,512-y,r);
-    g.addColorStop(0,'rgba(255,255,255,.7)');g.addColorStop(.6,'rgba(255,255,255,.45)');g.addColorStop(1,'rgba(255,255,255,0)');gx2.fillStyle=g;gx2.beginPath();gx2.arc(x,512-y,r,0,6.2832);gx2.fill();}}
-  lastG=[cx,cy];gDirty=1;} else lastG=null;
- if(now-lastDecay>80){gx2.fillStyle='rgba(0,0,0,.018)';gx2.fillRect(0,0,512,512);gx2.globalCompositeOperation='difference';gx2.fillStyle='rgb(2,2,2)';gx2.fillRect(0,0,512,512);gx2.globalCompositeOperation='source-over';lastDecay=now;gDirty=1;}
- if(gDirty){GT.needsUpdate=true;gDirty=0;}
+ /* finger through the spread: carve a channel that slowly closes from the sides */
+ {const draw=!idle&&(ptr.down||ptr.mouse)&&hitOK; const u=(gx-GX0)/GS, v=(gy-GY0)/GS;
+  gMat.uniforms.tPrev.value=gA.texture; gMat.uniforms.uDec.value=rdt/9.;
+  if(draw){gMat.uniforms.uA.value.set(lastG?lastG[0]:u,lastG?lastG[1]:v);gMat.uniforms.uB.value.set(u,v);gMat.uniforms.uDraw.value=1;lastG=[u,v];}
+  else{gMat.uniforms.uDraw.value=0;lastG=null;}
+  R.setRenderTarget(gB);R.render(gScene,gCam);R.setRenderTarget(null);
+  const tmp=gA;gA=gB;gB=tmp;U.uGroove.value=gA.texture;}
  touchL.position.set(px-.4,py-.6,.9);touchL.intensity=idle?0:2.5+kk*2;
  /* button dollop */
  syncPill();
