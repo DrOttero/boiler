@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>להדליק דוד?</title>
 <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;500;700&display=swap" rel="stylesheet">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <style>
 :root{box-sizing:border-box}
 *{box-sizing:border-box;margin:0}
@@ -83,10 +83,6 @@ p{color:#f2d6b4;font-weight:500;font-size:clamp(1.12rem,4.7vw,1.36rem);line-heig
 
 <script type="module">
 import * as THREE from 'three';
-import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
-import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
-import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
-import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 
 /* ---------------- app state / DOM ---------------- */
 const $=s=>document.querySelector(s);
@@ -130,19 +126,15 @@ else{
 const mobile=Math.min(innerWidth,innerHeight)<700;
 let PR=Math.min(devicePixelRatio||1,mobile?1.5:1.75);
 R.setPixelRatio(PR);R.setSize(innerWidth,innerHeight,false);
-R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.18;R.autoClear=false;
+R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.0;R.autoClear=false;
 
 /* studio environment: dark warm room + softboxes -> crisp, believable highlights */
 const pm=new THREE.PMREMGenerator(R);
 const envScene=new THREE.Scene();
-envScene.add(new THREE.Mesh(new THREE.SphereGeometry(20,32,16),new THREE.MeshBasicMaterial({color:new THREE.Color(.26,.12,.07),side:THREE.BackSide})));
+envScene.add(new THREE.Mesh(new THREE.SphereGeometry(20,32,16),new THREE.MeshBasicMaterial({color:new THREE.Color(.035,.016,.008),side:THREE.BackSide})));
 const box=(w,h,x,y,z,c)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide}));m.position.set(x,y,z);m.lookAt(0,0,0);envScene.add(m);};
-const disc=(r,x,y,z,c)=>{const m=new THREE.Mesh(new THREE.CircleGeometry(r,48),new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide}));m.position.set(x,y,z);m.lookAt(0,0,0);envScene.add(m);};
-disc(1.7,-4,7,10,new THREE.Color(5,4.7,4.5));        // the big soft "window" blob
-box(1.0,7,7,6,4,new THREE.Color(3.6,3.3,3.1));        // tall strip -> long streak highlights
-box(1.0,7,-7,3,3,new THREE.Color(2.2,2,1.9));
-disc(1.2,3,7,8,new THREE.Color(2.4,2.2,2));
-box(1.2,6,-1.5,-9,5,new THREE.Color(3,2.8,2.6));box(.6,6,1.8,-9,5,new THREE.Color(1.6,1.5,1.4));           // weak fill behind camera
+box(4,2.5,-6,8,9,new THREE.Color(9,8,7));box(1.2,8,9,4,3,new THREE.Color(5,3,1.8));box(14,1,0,14,-2,new THREE.Color(1.2,1,.8));
+box(3,3,-2,-3,10,new THREE.Color(3,2.6,2.2));
 const ENV=pm.fromScene(envScene,.015).texture;
 
 const NOISE=`
@@ -152,89 +144,70 @@ float ns(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<3;i++){v+=a*ns(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}`;
 const T={value:0};
 
-/* ================= background: a pool of milk chocolate with a thick stream pouring in ================= */
-const bg=new THREE.Scene();bg.environment=ENV;bg.background=new THREE.Color(0x2a140c);
+/* ================= background: a real 3D lake of spread ================= */
+const bg=new THREE.Scene();bg.environment=ENV;bg.background=new THREE.Color(0x1a0904);bg.fog=new THREE.Fog(0x1a0904,8,20);
 const A0=innerWidth/innerHeight;
-const cam=new THREE.PerspectiveCamera(A0<1?50:34,A0,.1,60);cam.up.set(0,0,1);
-const IMP=new THREE.Vector2(0,1.15);
-const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uImp:{value:IMP},uRip:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,-99,0))},uPour:{value:0}};
+const cam=new THREE.PerspectiveCamera(A0<1?52:35,A0,.1,60);
+const GC=document.createElement('canvas');GC.width=GC.height=512;const gx2=GC.getContext('2d');gx2.fillStyle='#000';gx2.fillRect(0,0,512,512);
+const GT=new THREE.CanvasTexture(GC);GT.minFilter=THREE.LinearFilter;GT.magFilter=THREE.LinearFilter;GT.generateMipmaps=false;
+const GX0=-6,GY0=-3,GS=12; // groove map covers this square of the lake (world units)
+const U={uT:T,uPtr:{value:new THREE.Vector2(0,0)},uK:{value:0},uGroove:{value:GT}};
 const HF=`
-uniform vec2 uImp;uniform vec4 uRip[4];uniform float uPour;
-float H(vec2 p){
- vec2 d=p-uImp; float r=length(d);
- float h=.05*fbm(p*.32+vec2(0.,-uT*.02));
- vec2 dir=d/max(r,.001); h+=.022*fbm(dir*1.5+vec2(r*1.1-uT*.22,r*.3))*smoothstep(.2,1.,r);
- float P=uPour;
- h+=P*(-.10*exp(-r*r*7.)+.075*exp(-pow(r-.5,2.)*16.)+.03*exp(-pow(r-.95,2.)*10.));
- h+=P*.035*sin(r*6.5-uT*1.6)*exp(-r*.75)*smoothstep(.45,.9,r);
- vec2 tq=vec2(d.x*2.1,(d.y+1.3)*.8); h+=P*.05*exp(-dot(tq,tq)*.9);
- for(int i=0;i<4;i++){vec4 R=uRip[i];float age=uT-R.z; if(age>0.&&age<7.){float rr=length(p-R.xy),f=rr-age*.75;
-   h+=R.w*.05*exp(-age*.55)*sin(f*8.)*exp(-f*f*2.5)*smoothstep(0.,.3,age);}}
- vec2 dd=p-uPtr;float r2=dot(dd,dd); h-=uK*.12*exp(-r2*7.);h+=uK*.04*exp(-pow(sqrt(r2)-.42,2.)*40.);
- return h;}`;
-function chocBase(extra={}){return new THREE.MeshPhysicalMaterial(Object.assign({color:new THREE.Color('#7b3f2a'),roughness:.13,metalness:0,specularIntensity:1,envMapIntensity:1.05},extra));}
-const poolMat=chocBase();
-poolMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
+float H(vec2 p,float ce){
+ vec2 q=p*.35;
+ vec2 w=vec2(fbm(q*.8+vec2(0.,uT*.02)),fbm(q*.8+vec2(5.2,1.3)-uT*.015));
+ q+=1.1*w;
+ float u1=q.x*1.9+1.3*sin(q.y*1.1+w.y*3.);
+ float u2=q.y*2.3-q.x*.7+3.5*w.x;
+ float s1=sin(u1),s2=sin(u2);
+ float h=.15*pow(sqrt(s1*s1+ce),.65)+.07*pow(sqrt(s2*s2+ce*1.6),.8)+.035*fbm(q*3.);
+ return h;}
+uniform sampler2D uGroove;
+float GR(vec2 p){vec2 uv=(p-vec2(${GX0}.,${GY0}.))/${GS}.; if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.)return 0.; return texture2D(uGroove,uv).r;}
+float HG(vec2 p,float ce){
+ float q=.035; float c=(GR(p)*2.+GR(p+vec2(q,0.))+GR(p-vec2(q,0.))+GR(p+vec2(0.,q))+GR(p-vec2(0.,q)))/6.; float g=smoothstep(.06,.9,c);
+ float o=.17, b=(GR(p+vec2(o,0.))+GR(p-vec2(o,0.))+GR(p+vec2(0.,o))+GR(p-vec2(0.,o))
+  +GR(p+vec2(o,o)*.7071)+GR(p-vec2(o,o)*.7071)+GR(p+vec2(o,-o)*.7071)+GR(p+vec2(-o,o)*.7071))*.125;
+ float ridge=smoothstep(0.,.6,max(0.,b-c*.8));
+ return H(p,ce)-.22*g*g*(3.-2.*g)+.14*ridge;}`;
+const lakeMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#55301c'),roughness:.38,clearcoat:.7,clearcoatRoughness:.1,envMapIntensity:.9});
+lakeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
  const head=`uniform float uT;uniform vec2 uPtr;uniform float uK;varying vec2 vP;${NOISE}${HF}`;
  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <beginnormal_vertex>','vec3 objectNormal=vec3(0.,0.,1.);')
-  .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,H(vP));');
+  .replace('#include <begin_vertex>','vP=position.xy;vec3 transformed=vec3(position.xy,H(vP,.03));');
  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+head)
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
- {float e=.008;vec3 no=normalize(vec3(-(H(vP+vec2(e,0.))-H(vP-vec2(e,0.)))/(2.*e),-(H(vP+vec2(0.,e))-H(vP-vec2(0.,e)))/(2.*e),1.));
-  normal=normalize((viewMatrix*vec4(no,0.)).xyz);}`);
+ {float e=.006;vec3 no=normalize(vec3(-(HG(vP+vec2(e,0.),.006)-HG(vP-vec2(e,0.),.006))/(2.*e),-(HG(vP+vec2(0.,e),.006)-HG(vP-vec2(0.,e),.006))/(2.*e),1.));
+  normal=normalize((viewMatrix*vec4(no,0.)).xyz);}`)
+  .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n clearcoatNormal=normal;');
 };
-const pool=new THREE.Mesh(new THREE.PlaneGeometry(22,22,mobile?200:280,mobile?200:280),poolMat);bg.add(pool);
-/* the stream: thick, slightly wobbling, streaks flowing down */
-const SU={uT:T,uLen:{value:0}};
-const streamMat=chocBase({roughness:.11});
-streamMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,SU);
- sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nuniform float uT,uLen;varying vec3 vO;')
-  .replace('#include <begin_vertex>',`vec3 transformed=position;
-   float z=position.y; float w=.018*sin(z*1.7+uT*2.3)+.012*sin(z*3.1-uT*1.7);
-   transformed.x+=w; float neck=1.+.22*exp(-pow(z+.0,2.)*6.); transformed.xz*=neck; vO=position;`);
- sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>\nuniform float uT,uLen;varying vec3 vO;${NOISE}`)
+const lake=new THREE.Mesh(new THREE.PlaneGeometry(26,26,mobile?220:300,mobile?220:300),lakeMat);bg.add(lake);
+const key=new THREE.DirectionalLight(0xffe2c8,2.6);key.position.set(-3,3,5);bg.add(key);
+bg.add(new THREE.HemisphereLight(0x8a5a40,0x1a0904,.6));
+const rimL=new THREE.DirectionalLight(0xff9a60,.5);rimL.position.set(4,6,1.5);bg.add(rimL);
+const touchL=new THREE.PointLight(0xffc89a,0,4,1.6);bg.add(touchL);
+
+/* gold lid for the opening shot */
+const gold=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#d8a748'),metalness:1,roughness:.2,clearcoat:.4,clearcoatRoughness:.2,envMapIntensity:2.2});
+gold.onBeforeCompile=sh=>{ // knurled rim
+ sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vO;').replace('#include <begin_vertex>','#include <begin_vertex>\nvO=position;');
+ sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vO;')
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
-  {vec2 cs=normalize(vO.xz+1e-4); vec2 q=vec2(cs.x*3.+cs.y*1.7,vO.y*.9+uT*1.6); float e=.04;
-   float s0=fbm(q), sx=fbm(q+vec2(e,0.));
-   vec3 tng=normalize((viewMatrix*vec4(-cs.y,0.,cs.x,0.)).xyz);
-   normal=normalize(normal+tng*(sx-s0)/e*.09);}`);
+  {float r=length(vO.xz); if(r>1.66){float a=atan(vO.z,vO.x); normal=normalize(normal+ (viewMatrix*vec4(-sin(a),0.,cos(a),0.)).xyz*sin(a*180.)*.35);}
+   else { float g=sin(r*34.)*.035; normal=normalize(normal+(viewMatrix*vec4(vO.x/max(r,.01),0.,vO.z/max(r,.01),0.)).xyz*g);} }`);
 };
-const SH=7;
-const streamGeo=new THREE.CylinderGeometry(.27,.29,SH,64,90,true);streamGeo.translate(0,SH/2,0);
-const stream=new THREE.Mesh(streamGeo,streamMat);stream.rotation.x=Math.PI/2;stream.position.set(IMP.x,IMP.y,-.05);bg.add(stream);
-const key=new THREE.DirectionalLight(0xfff1e6,2.2);key.position.set(-3,4,6);bg.add(key);
-bg.add(new THREE.HemisphereLight(0xd09a7a,0x3a1c10,1.0));
-const fill=new THREE.DirectionalLight(0xffe2d0,1.6);fill.position.set(.6,-6,2.2);bg.add(fill);
-const touchL=new THREE.PointLight(0xfff0e0,0,3.5,1.8);bg.add(touchL);
+const lid=new THREE.Group();
+const lidBody=new THREE.Mesh(new THREE.CylinderGeometry(1.7,1.7,.42,180,1),gold);lid.add(lidBody);
+const lidRing=new THREE.Mesh(new THREE.TorusGeometry(1.36,.035,16,180),gold);lidRing.rotation.x=Math.PI/2;lidRing.position.y=.21;const lidCap=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.08,.05,140),gold);lidCap.position.y=.23;lid.add(lidCap);lid.add(lidRing);
+lid.rotation.x=Math.PI/2;lid.position.set(0,.3,.45);bg.add(lid);
 
-/* camera: slow push-in while the pour begins */
-const P0=new THREE.Vector3(0,-3.2,6.2), P1=new THREE.Vector3(0,-3.9,4.3), LK0=new THREE.Vector3(0,1.1,0), LK1=new THREE.Vector3(0,.55,0);
-cam.position.copy(P0);cam.lookAt(LK0);
-
-/* post: tilt-shift focus (like a macro lens), warm grade, film grain, vignette */
-const composer=new EffectComposer(R);
-composer.addPass(new RenderPass(bg,cam));
-const blurShader={uniforms:{tDiffuse:{value:null},uDir:{value:new THREE.Vector2(1,0)},uRes:{value:new THREE.Vector2(1,1)},uFocus:{value:.5},uAmt:{value:1}},
- vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
- fragmentShader:`uniform sampler2D tDiffuse;uniform vec2 uDir,uRes;uniform float uFocus,uAmt;varying vec2 vUv;
- void main(){float k=smoothstep(.12,.55,abs(vUv.y-uFocus))*uAmt*3.2; vec2 st=uDir/uRes*k; vec4 c=vec4(0.);
-  c+=texture2D(tDiffuse,vUv-4.*st)*.051;c+=texture2D(tDiffuse,vUv-3.*st)*.0918;c+=texture2D(tDiffuse,vUv-2.*st)*.12245;c+=texture2D(tDiffuse,vUv-st)*.1531;
-  c+=texture2D(tDiffuse,vUv)*.1633;c+=texture2D(tDiffuse,vUv+st)*.1531;c+=texture2D(tDiffuse,vUv+2.*st)*.12245;c+=texture2D(tDiffuse,vUv+3.*st)*.0918;c+=texture2D(tDiffuse,vUv+4.*st)*.051;
-  gl_FragColor=c;}`};
-const blurH=new ShaderPass(blurShader), blurV=new ShaderPass(blurShader); blurV.uniforms.uDir.value.set(0,1);
-composer.addPass(blurH);composer.addPass(blurV);
-composer.addPass(new OutputPass());
-const grade=new ShaderPass({uniforms:{tDiffuse:{value:null},uT:{value:0}},
- vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
- fragmentShader:`uniform sampler2D tDiffuse;uniform float uT;varying vec2 vUv;
- float rnd(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233))+uT*7.)*43758.5453);}
- void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;
-  c=pow(c,vec3(1.04,1.,.97));
-  float v=1.-.62*pow(length((vUv-vec2(.5,.48))*vec2(1.,1.15)),2.2); c*=v;
-  c+=(rnd(vUv*vec2(1873.,1031.))-.5)*.035;
-  gl_FragColor=vec4(c,1.);}`});
-composer.addPass(grade);
+/* camera choreography: top-down at the lid -> hero angle */
+const P0=new THREE.Vector3(0,.3,7.2), P1=new THREE.Vector3(0,-6,5);
+const q0=new THREE.Quaternion(),q1=new THREE.Quaternion();
+{const c=new THREE.PerspectiveCamera();c.position.copy(P0);c.up.set(0,1,0);c.lookAt(0,.3,0);q0.copy(c.quaternion);
+ c.position.copy(P1);c.up.set(0,0,1);c.lookAt(0,1.2,0);q1.copy(c.quaternion);}
+cam.position.copy(P0);cam.quaternion.copy(q0);
 
 /* ================= foreground: drips, button dollop, hazelnuts, pour ================= */
 const fx=new THREE.Scene();fx.environment=ENV;
@@ -245,7 +218,7 @@ fx.add(new THREE.HemisphereLight(0x9a6a50,0x200a04,.55));
 const frim=new THREE.DirectionalLight(0xff9a60,.6);frim.position.set(.8,-.2,.6);fx.add(frim);
 
 function chocMat(o={}){
- const m=new THREE.MeshPhysicalMaterial({color:new THREE.Color(o.color||'#7b3f2a'),roughness:o.rough??.14,clearcoat:o.cc??0,clearcoatRoughness:.12,envMapIntensity:o.env??1.05});
+ const m=new THREE.MeshPhysicalMaterial({color:new THREE.Color(o.color||'#55301c'),roughness:o.rough??.36,clearcoat:o.cc??.75,clearcoatRoughness:.12,envMapIntensity:o.env??1});
  const u={uT:T,uAmp:{value:o.amp??.25},uSc:{value:o.sc??.03},uFlow:{value:o.flow??0}};
  m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,u);
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWp;')
@@ -257,17 +230,17 @@ float hh(vec2 p){return fbm(p)+.5*fbm(p*2.7+3.1);}`)
   { vec2 p=vec2(vWp.x*uSc,(vWp.y+uT*uFlow)*uSc*(uFlow>0.?.28:1.)); float e=.05;
     float hx=hh(p+vec2(e,0.))-hh(p-vec2(e,0.)), hy=hh(p+vec2(0.,e))-hh(p-vec2(0.,e));
     normal=normalize(normal+vec3(-hx,-hy,0.)*uAmp/e*.5); }`)
-   .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n#ifdef USE_CLEARCOAT\n clearcoatNormal=normal;\n#endif');
+   .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n clearcoatNormal=normal;');
  };
  return m;
 }
-const CH=chocMat({amp:.03,sc:.012}), CHpour=chocMat({amp:.12,sc:.0055,flow:700,rough:.12});
+const CH=chocMat({amp:.05,sc:.012,rough:.3}), CHpour=chocMat({amp:.16,sc:.0055,flow:700,rough:.34});
 
 /* ======= the spread layer: button dollop + lip + drips + splats as ONE fluid surface ======= */
 const L={uPill:{value:new THREE.Vector4(-999,-999,1,1)},uBeat:{value:1},uBite:{value:[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()]},uBiteOn:{value:0},
  uSt:{value:new THREE.Vector4(0,0,0,0)},uSb:{value:0},uGlob:{value:new THREE.Vector4(0,0,0,0)},
  uSp:{value:[0,1,2].map(()=>new THREE.Vector4())},uDr:{value:[0,1,2].map(()=>new THREE.Vector4())},uT:T};
-const layerMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#7b3f2a'),roughness:.15,envMapIntensity:1.05,transparent:true,depthWrite:false});
+const layerMat=new THREE.MeshPhysicalMaterial({color:new THREE.Color('#6b3b20'),roughness:.4,clearcoat:.55,clearcoatRoughness:.16,envMapIntensity:1,sheen:.3,sheenColor:new THREE.Color('#8a5a3c'),sheenRoughness:.5,transparent:true,depthWrite:false});
 layerMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,L);
  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWp;')
   .replace('#include <project_vertex>','#include <project_vertex>\nvWp=(modelMatrix*vec4(transformed,1.)).xyz;');
@@ -308,7 +281,7 @@ float HT(vec2 p){vec4 P=PARTS(p);
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
  { float e=1.; float hx=HT(pp+vec2(e,0.))-HT(pp-vec2(e,0.)), hy=HT(pp+vec2(0.,e))-HT(pp-vec2(0.,e));
    normal=normalize(vec3(-hx/(2.*e)*1.7, hy/(2.*e)*1.7, 1.)); }`)
-  .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n#ifdef USE_CLEARCOAT\n clearcoatNormal=normal;\n#endif');
+  .replace('#include <clearcoat_normal_fragment_begin>','#include <clearcoat_normal_fragment_begin>\n clearcoatNormal=normal;');
 };
 const layer=new THREE.Mesh(new THREE.PlaneGeometry(1,1),layerMat);layer.renderOrder=2;fx.add(layer);
 let activePill=null;
@@ -373,8 +346,7 @@ function spawnCrumbs(x,y){for(let i=0;i<14;i++){const m=new THREE.Mesh(crumbGeo,
 /* ---------- sizing ---------- */
 function resize(){
  W=innerWidth;Hh=innerHeight;R.setSize(W,Hh,false);
- cam.aspect=W/Hh;cam.fov=cam.aspect<1?50:34;cam.updateProjectionMatrix();
- composer.setPixelRatio(PR);composer.setSize(W,Hh);blurH.uniforms.uRes.value.set(W*PR,Hh*PR);blurV.uniforms.uRes.value.set(W*PR,Hh*PR);
+ cam.aspect=W/Hh;cam.fov=cam.aspect<1?52:35;cam.updateProjectionMatrix();
  ocam.right=W;ocam.bottom=-Hh;ocam.updateProjectionMatrix();
  buildPour();layer.scale.set(W,Hh,1);layer.position.set(W/2,-Hh/2,50);
 }
@@ -384,8 +356,8 @@ resize();addEventListener('resize',resize);
 const ray=new THREE.Raycaster(), ndc=new THREE.Vector2(), hit=new THREE.Vector3(), plane0=new THREE.Plane(new THREE.Vector3(0,0,1),0);
 let ptr={x:0,y:0,down:0,seen:0,last:0};
 addEventListener('pointerdown',e=>{ptr.x=e.clientX;ptr.y=e.clientY;ptr.down=1;ptr.seen=1;ptr.last=performance.now();});
-addEventListener('pointermove',e=>{ptr.x=e.clientX;ptr.y=e.clientY;ptr.seen=1;ptr.last=performance.now();if(e.pointerType==='touch'||e.buttons)ptr.down=1;});
-addEventListener('pointerup',()=>ptr.down=0);addEventListener('pointercancel',()=>ptr.down=0);
+addEventListener('pointermove',e=>{ptr.x=e.clientX;ptr.y=e.clientY;ptr.seen=1;ptr.last=performance.now();ptr.mouse=e.pointerType==='mouse';if(e.pointerType==='touch'||e.buttons)ptr.down=1;});
+addEventListener('pointerup',e=>{ptr.down=0;if(e.pointerType!=='mouse')ptr.seen=0;});addEventListener('pointercancel',()=>ptr.down=0);
 
 /* ---------- FX API ---------- */
 FX={
@@ -406,7 +378,7 @@ FX={
 };
 
 /* ---------- main loop ---------- */
-let t0=0; let px=0,py=0,kk=0, last=0, slow=0, frames=0, wasDown=0, lastRip=0, ripI=0; const LKt=new THREE.Vector3();
+let t0=0; let px=0,py=0,kk=0, last=0, slow=0, frames=0, lastG=null, gDirty=0, lastDecay=0, hitOK=false;
 const INTRO=2600;
 const eo=x=>1-(1-x)*(1-x), eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
 
@@ -414,21 +386,31 @@ function frame(now){
  if(!t0){t0=now;last=now;setTimeout(()=>document.body.classList.remove('intro'),INTRO-500);}
  const dt=Math.min(.05,(now-last)/1000);last=now;const t=(now-t0)/1000;T.value=t%3000;
  /* adaptive resolution */
- frames++; if(frames>30&&frames<400){slow=slow*.95+(dt>.034?1:0)*.05; if(slow>.6&&PR>.8){PR=Math.max(.75,PR-.25);R.setPixelRatio(PR);R.setSize(W,Hh,false);composer.setPixelRatio(PR);composer.setSize(W,Hh);blurH.uniforms.uRes.value.set(W*PR,Hh*PR);blurV.uniforms.uRes.value.set(W*PR,Hh*PR);slow=0;}}
- /* intro: stream falls into frame, hits the pool, camera pushes in */
+ frames++; if(frames>30&&frames<400){slow=slow*.95+(dt>.034?1:0)*.05; if(slow>.6&&PR>.8){PR=Math.max(.75,PR-.25);R.setPixelRatio(PR);R.setSize(W,Hh,false);slow=0;}}
+ /* intro */
  const it=Math.min(1,(now-t0)/INTRO);
- {const ce=eio(Math.min(1,(now-t0)/4800));cam.position.lerpVectors(P0,P1,ce);LKt.lerpVectors(LK0,LK1,ce);cam.lookAt(LKt);
-  const ft=Math.min(1,Math.max(0,((now-t0)/1000-.25)/.85)); stream.position.z=7.2*(1-ft*ft)-.05;
-  U.uPour.value=Math.min(1,Math.max(0,((now-t0)/1000-1.05)/.9));}
+ if(it<1){
+  const lt=Math.max(0,Math.min(1,(it-.12)/.55)), lk=eio(lt);
+  lid.rotation.y=-lk*Math.PI*1.8; lid.position.z=.45+lk*lk*8; lid.position.x=lk*lk*2.2; lid.rotation.z=lk*.5; lid.visible=lt<1;
+  const ct=eio(Math.max(0,Math.min(1,(it-.42)/.58)));
+  cam.position.lerpVectors(P0,P1,ct);cam.quaternion.slerpQuaternions(q0,q1,ct);
+ } else if(lid.parent){bg.remove(lid);cam.position.copy(P1);cam.quaternion.copy(q1);}
  /* pointer in lake */
  const idle=!ptr.seen||now-ptr.last>2600;
  let gx,gy;
- if(idle){gx=Math.sin(t*.23)*1.4;gy=.2+Math.cos(t*.17)*.9;}
- else{ndc.set(ptr.x/W*2-1,-(ptr.y/Hh)*2+1);ray.setFromCamera(ndc,cam);if(ray.ray.intersectPlane(plane0,hit)){gx=hit.x;gy=hit.y;}else{gx=px;gy=py;}}
+ if(idle){gx=Math.sin(t*.23)*1.4;gy=1.5+Math.cos(t*.17)*1.2;}
+ else{ndc.set(ptr.x/W*2-1,-(ptr.y/Hh)*2+1);ray.setFromCamera(ndc,cam);hitOK=!!ray.ray.intersectPlane(plane0,hit);if(hitOK){gx=hit.x;gy=hit.y;}else{gx=px;gy=py;}}
  px+=(gx-px)*.08;py+=(gy-py)*.08;kk+=(ptr.down-kk)*.1;
  U.uPtr.value.set(px,py);U.uK.value=kk;
- if(ptr.down&&!idle&&(!wasDown||now-lastRip>420)){U.uRip.value[ripI%4].set(gx,gy,T.value,1);ripI++;lastRip=now;} wasDown=ptr.down;
- touchL.position.set(px-.3,py-.5,1.1);touchL.intensity=idle?0:1.5+kk*2.5;
+ /* finger through the spread: carve a channel that slowly closes */
+ if(!idle&&(ptr.down||ptr.mouse)&&hitOK){const cx=(gx-GX0)/GS*512, cy=(gy-GY0)/GS*512;
+  if(lastG){const dx=cx-lastG[0],dy=cy-lastG[1],L=Math.hypot(dx,dy),n=Math.max(1,Math.ceil(L/3));
+   for(let i=1;i<=n;i++){const x=lastG[0]+dx*i/n,y=lastG[1]+dy*i/n;const r=14;const g=gx2.createRadialGradient(x,512-y,0,x,512-y,r);
+    g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(.55,'rgba(255,255,255,.35)');g.addColorStop(1,'rgba(255,255,255,0)');gx2.fillStyle=g;gx2.beginPath();gx2.arc(x,512-y,r,0,6.2832);gx2.fill();}}
+  lastG=[cx,cy];gDirty=1;} else lastG=null;
+ if(now-lastDecay>60){gx2.fillStyle='rgba(0,0,0,.035)';gx2.fillRect(0,0,512,512);lastDecay=now;gDirty=1;}
+ if(gDirty){GT.needsUpdate=true;gDirty=0;}
+ touchL.position.set(px-.4,py-.6,.9);touchL.intensity=idle?0:2.5+kk*2;
  /* button dollop */
  syncPill();
  L.uBeat.value=1+.03*Math.max(0,Math.sin(t*5.2))*Math.max(0,Math.sin(t*2.6));
@@ -467,7 +449,7 @@ function frame(now){
  for(let i=crumbs.length-1;i>=0;i--){const c=crumbs[i];c.t+=dt;c.vy-=900*dt;c.m.position.x+=c.vx*dt;c.m.position.y+=c.vy*dt;c.m.rotation.x+=c.vr*dt;c.m.rotation.y+=c.vr*dt*.7;
   if(c.t>1.4){fx.remove(c.m);crumbs.splice(i,1);}}
  /* render */
- grade.uniforms.uT.value=t%100; composer.render(); if(it>.62){R.clearDepth();R.render(fx,ocam);}
+ R.clear();R.render(bg,cam);if(it>.86){R.clearDepth();R.render(fx,ocam);}
  requestAnimationFrame(frame);
 }
 show('s1');
